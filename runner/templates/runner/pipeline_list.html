@@ -1,0 +1,32 @@
+{% extends 'runner/base.html' %}
+
+{% block content %}
+
+<h2>Pipelines</h2>
+<table class="table table-hover">
+    <thead>
+        <tr>
+            <th>Name</th><th>Description</th><th>Commands</th><th>Actions</th>
+        </tr>
+    </thead>
+    {% for pipeline in object_list %}
+    <tr>
+        <td> {{ pipeline.name }} </td>
+        <td> {{ pipeline.description }} </td>
+        <td> {{ pipeline.commands.count }} </td>
+
+        <td>
+        <form action="/admin/runner/pipeline/{{ pipeline.id }}/change/">{% csrf_token %}
+            <input type="submit" value="Edit" />
+        </form>
+        <form action="/delete/pipeline/{{ pipeline.id }}/" method="post">{% csrf_token %}
+            <input type="submit" value="Delete" />
+        </form></td>
+    </tr>
+    {% empty %}
+    <tr>
+        <td> No pipelines yet. </td>
+    </tr>
+    {% endfor %}
+</table>
+{% endblock %}

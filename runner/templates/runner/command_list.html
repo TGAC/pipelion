@@ -1,0 +1,33 @@
+{% extends 'runner/base.html' %}
+
+{% block content %}
+
+<h2>Commands</h2>
+<table class="table table-hover">
+    <thead>
+        <tr>
+            <th>Name</th><th>Description</th><th>Command</th><th>Actions</th>
+        </tr>
+    </thead>
+    {% for command in object_list %}
+    <tr>
+        <td> {{ command.name }} </td>
+        <td> {{ command.description }} </td>
+        <td> {{ command.command_text }} </td>
+
+        <td>
+        <form action="/admin/runner/command/{{ command.id }}/change/">{% csrf_token %}
+            <input type="submit" value="Edit" />
+        </form></td>
+        <td>
+        <form action="/delete/command/{{ command.id }}/" method="post">{% csrf_token %}
+            <input type="submit" value="Delete" />
+        </form></td>
+    </tr>
+    {% empty %}
+    <tr>
+        <td> No commands yet. </td>
+    </tr>
+    {% endfor %}
+</table>
+{% endblock %}

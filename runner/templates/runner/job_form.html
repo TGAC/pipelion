@@ -1,0 +1,49 @@
+{% extends 'runner/base.html' %}
+{% block content %}
+<h2>Create Job</h2>
+<form action="" method="post" id="create_form">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <div id="input_container"></div>
+    <input type="button" value="+" id="add_input_btn"/>
+    <input type="submit" value="Save" id="save_btn"/>
+</form>
+
+<script>
+    num_rows = 0;
+
+    function addRow() {
+        num_rows++;
+        $('#input_container').append("<br />").append("<div style='display:inline-block; margin-top: 10px; margin-right: 10px;'>").append("<b>Placeholder:</b>").append("<input type='text' id='placeholder_" + num_rows + "'" + "/>").append("</div>").append("<div style='display:inline-block; margin:10px;'>").append("<b>Value:</b>").append("<input type='text' id='value_" + num_rows + "'" + "/>").append("</div>");
+        return false;
+    }
+
+
+    $(document).ready(function() {
+        addRow();
+        jQuery("#add_input_btn").click(addRow);
+        jQuery("#save_btn").click(function() {
+            // create input json
+            json = {};
+            placeholder = '';
+            $("#input_container input[type=text]").each(function() {
+                if (this.id.indexOf('placeholder') >= 0) {
+                    placeholder = this.value;
+                } else {
+                    json[placeholder] = this.value;
+                    placeholder = '';
+                }
+            });
+            console.log(json);
+            var input = $("<input>")
+           .attr("type", "hidden")
+           .attr("name", "input_json").val(JSON.stringify(json));
+            $('#create_form').append($(input));
+            $('#create_form').submit();
+
+            return false;
+        });
+    }); 
+</script>
+
+{% endblock %}

@@ -1,0 +1,9 @@
+{% extends 'runner/base.html' %}
+{% block content %}
+<h2>Edit Job</h2>
+<form>
+    {% csrf_token %}
+    {{ form.as_p }}
+    <input type="submit" value="Update" />
+</form>
+{% endblock %}

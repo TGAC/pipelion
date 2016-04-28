@@ -1,0 +1,74 @@
+{% extends 'runner/base.html' %}
+{% block content %}
+<h2>Create Pipeline</h2>
+<form action="" method="post" id="create_form">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <div style="display: inline-block; margin: 10px;">
+        <h3>Available Commands:</h3>
+
+        <select multiple id="available" style="width: 100%;">
+            {% for command in commands %}
+            <option value="{{ command.id }}">{{ command.name }}</option>
+
+            {% empty %}
+            No commands.
+            {% endfor %}
+        </select>
+    </div>
+    <div id='move_all_left' style="display: inline-block;">
+        <input type="button" value="<<" />
+    </div>
+    <div id='move_left' style="display: inline-block;">
+        <input type="button" value="<" />
+    </div>
+    <div id='move_right' style="display: inline-block;">
+        <input type="button" value=">" />
+    </div>
+    <div id='move_all_right' style="display: inline-block;">
+        <input type="button" value=">>" />
+    </div>
+
+    <div style="display: inline-block; margin: 10px;">
+        <h3>Selected Commands:</h3>
+        <select multiple name="commands[]" id="selected" form="create_form" style="width: 100%;"></select>
+    </div>
+
+</form>
+<input type="button" value="Save" id="save_btn"/>
+<script>
+    $(document).ready(function() {
+        jQuery("#save_btn").click(function() {
+            $('#selected option').prop('selected', true);
+            $('#create_form').submit();
+
+            return false;
+        });
+        $("#move_all_right").click(function() {
+            var items = $("#available option").clone();
+            var selected = $("#selected");
+            items.each(function(index, value) {
+                selected.append(value);
+            });
+            return false;
+        });
+        $("#move_all_left").click(function() {
+            var selected = $("#selected").find('option').remove();
+        });
+        $("#move_right").click(function() {
+            var items = $('#available').find(":selected").clone();
+            var selected = $("#selected");
+            items.each(function(index, value) {
+                selected.append(value);
+            });
+            return false;
+        });
+        $("#move_left").click(function() {
+            var items = $('#selected').find(":selected").remove();
+
+            return false;
+        });
+    });
+
+</script>
+{% endblock %}

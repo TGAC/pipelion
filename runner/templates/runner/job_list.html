@@ -1,0 +1,95 @@
+{% extends 'runner/base.html' %}
+{% block content %}
+<style>
+    .action-button {
+        display: inline-block;
+        padding-right: 5px;
+    }
+
+</style>
+<h2>Jobs</h2>
+<div>
+    <div class="panel-group" id="accordion">
+        {% for job in object_list %}
+        <div class="panel panel-default">
+            <div class="panel-heading">
+                <div class="panel-title" id="tr_{{ job.id }}">
+                    <a data-toggle="collapse" data-parent="#accordion" href="#collapse{{ job.id }}"><span class="glyphicon glyphicon-collapse-down"></span></a>
+                    <table class='table table-striped'>
+                        <thead>
+                            <tr>
+                                <th>Last Run</th>
+                                <th>Name</th>
+                                <th>Pipeline</th>
+                                <th>Current Command</th>
+                                <th>Console State</th>
+                                <th>Exit Code</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>{{ job.last_run }}</td>
+                                <td>{{job.name }}</td>
+                                <td>{{ job.pipeline }}</td>
+                                <td>{{ job.current_command }}</td>
+                                <td>{{ job.get_state_display }}</td>
+                                <td>{{ job.exit_code }} </td>
+                                <td><span class="glyphicon glyphicon-play" onclick="return click_run({{ job.id }});"> </span><span class="glyphicon glyphicon-trash" onclick="return click_delete({{ job.id }});"> </span></td>
+                                <input type="hidden" value="{{ job.id }}" name="id">
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div id="collapse{{ job.id }}" class="panel-collapse collapse">
+                    <div class="panel-body">
+                        <div class="panel panel-primary">
+                            <div class = "panel-heading">
+                                <h3 class = "panel-title">Output</h3>
+                            </div>
+                            <div id="output_panel{{ job.id }}" class = "panel-body" style="overflow-y: scroll;">
+                                {{ job.output|linebreaksbr }}
+                            </div>
+                        </div>
+                        <div class="panel panel-danger">
+                            <div class = "panel-heading">
+                                <h3 class = "panel-title">Error</h3>
+                            </div>
+                            <div id="error_panel{{ job.id }}" class = "panel-body" style="overflow-y: scroll;">
+                                {{ job.error|linebreaksbr }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <script>
+        function click_run(id) {
+            jQuery.post("/run/job/" + id + "/", {
+                'csrfmiddlewaretoken' : '{{ csrf_token }}'
+            }, function(data) {
+                $(function() {
+                    $('#message-panel').html("Job id " + id + " submitted.  Refresh page.").show().delay(3000).fadeOut(function() {
+                        $(this).hide();
+                    });
+                });
+            });
+        }
+
+        function click_delete(id) {
+            jQuery.post("/delete/job/" + id + "/", {
+                'csrfmiddlewaretoken' : '{{ csrf_token }}'
+            }, function(data) {
+                jQuery("#tr_" + id).remove();
+                $(function() {
+                    $('#message-panel').html("Job id " + id + " deleted.").show().delay(3000).fadeOut(function() {
+                        $(this).hide();
+                    });
+                });
+            });
+        }
+    </script>
+    {% endblock %}
