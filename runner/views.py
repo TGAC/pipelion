@@ -178,20 +178,19 @@ def miso(request):
     Marshalls between miso specific API methods based on query.
     """
 
-    # determine if post data is in body or POST :s
-    # This seems to be a quirk when calling the API from Java
-    post_data = ""
-    if not request.POST:
-        try:
-            request.POST = json.loads(request.body)
-        except ValueError:
-            error = "No query in POST request"
-            return JsonResponse([{ 'success' : False, 'error' : error }], safe=False)
+    query = ''
+
+    if 'submitTask' not in  request.POST and 'query' not in  request.POST:
+        # it came from miso.  Fix post.
+        request.POST = json.loads(request.body)
 
     if request.POST.get('submitTask'):
         query = 'submitTask'
-    else:
+    elif request.POST.get('query'):
         query = request.POST.get('query')
+    else:
+        pass
+
     views = {
         "getCompletedTasks": get_completed_jobs,
         "getFailedTasks": get_failed_jobs,
