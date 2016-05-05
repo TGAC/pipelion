@@ -139,6 +139,8 @@ class MisoAPITestCase(TestCase):
             content_type="application/json").json()
 
         self.assertEqual(self.test_pipeline_1.name, response.get('name'))
+        self.assertEqual(2, len(response.get('processes')))
+        self.assertEqual(3, len(response.get('processes')[0].get('parameters')))
 
     def test_get_pipelines(self):
         query = "getPipelines"
@@ -152,8 +154,11 @@ class MisoAPITestCase(TestCase):
         self.assertEqual(2, len(response))
 
     def test_submit_job(self):
+        Job.objects.all().delete()
         pipeline = self.test_pipeline_1.name
         params = { "run": False }
+        params["{feeb}"] = 300
+        params["{ one }"] = 'bloop'
         url = reverse("miso")
 
         response = self.client.post(url, 
@@ -164,3 +169,9 @@ class MisoAPITestCase(TestCase):
         self.assertEqual(2, len(response))
         self.assertTrue('id' in response)
         self.assertTrue(response.get('success'))
+        
+        #check job was created
+        self.assertEqual(1, len(Job.objects.all()))
+        #check job contains correct input
+        job = Job.objects.all()[0]
+        self.assertEqual([{u'{feeb}': 300}, {u'{ one }': u'bloop'}, {u'{ boiled }': None}], json.loads(job.input))

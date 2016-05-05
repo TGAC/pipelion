@@ -2,6 +2,7 @@ import re
 import drmaa
 import thread
 import time
+import threading
 
 decodestatus = {drmaa.JobState.UNDETERMINED: 'process status cannot be determined',
                 drmaa.JobState.QUEUED_ACTIVE: 'job is queued and active',
@@ -16,21 +17,27 @@ decodestatus = {drmaa.JobState.UNDETERMINED: 'process status cannot be determine
 
 
 class SlurmMonitor():
-    POLL_DELAY = 10 #Seconds
-    
-    def monitor(self, job):
+    POLL_DELAY = 10  # Seconds
+    lock = threading.RLock()
+    def monitor(self, job, std_out):
         def start_polling(ref, job):
-            print 'polling started for ' + str(ref)
             complete = False
+            status = ""
             while not complete:
                 status = self.get_job_status(ref)
                 job.scheduler_state = status
                 job.save()
                 time.sleep(self.POLL_DELAY)
                 complete = self.is_job_complete(status)
-            print 'polling complete for ' + str(ref)
-        ref = self.get_job_reference(job.output)
-        thread.start_new_thread(start_polling, (ref, job))
+            if status is decodestatus.get(drmaa.JobState.FAILED):
+                return False
+            elif status is decodestatus.get(drmaa.JobState.DONE):
+                return True
+            else:
+                raise Exception("Invalid Job State! {}".format(status))
+        ref = self.get_job_reference(std_out)
+        if ref:
+            return start_polling(ref, job)
 
 
     def get_job_reference(self, input):
@@ -38,8 +45,9 @@ class SlurmMonitor():
         return job_ref
 
     def get_job_status(self, reference):
-        with drmaa.Session() as s:
-            return decodestatus.get(s.jobStatus(reference))
+        with self.lock:
+            with drmaa.Session() as s:
+                return decodestatus.get(s.jobStatus(reference))
 
     def is_job_complete(self, status):
         if status in [decodestatus[drmaa.JobState.DONE], decodestatus[drmaa.JobState.FAILED]]:
@@ -48,11 +56,11 @@ class SlurmMonitor():
             return False
 
     def _get_value_by_key(self, input, key, regex):
-        #pattern = re.compile(key + regex)
+        # pattern = re.compile(key + regex)
         arr = input.splitlines()
 
         for str in arr:
-            result = re.search(key+regex, str)
+            result = re.search(key + regex, str)
             if result:
                 return str.strip()[len(key):]
         return None

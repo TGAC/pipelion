@@ -36,12 +36,9 @@ class Job(models.Model):
     description = models.CharField(max_length=200)
     pipeline = models.ForeignKey(Pipeline)
     input = models.CharField(max_length=10000, default='[]')
-    output = models.CharField(max_length=10000, null=True, blank=True)
-    error = models.CharField(max_length=10000, null=True, blank=True)
-    exit_code = models.CharField(max_length=5, null=True, blank=True)
+    log = models.CharField(max_length=10000, null=True, blank=True)
     state = models.PositiveSmallIntegerField(choices=JOB_STATES, default=0, null=True, blank=True)
     scheduler_state = models.CharField(max_length=500, null=True, blank=True)
-    current_command = models.ForeignKey(Command, null=True, blank=True)
     last_run = models.DateTimeField(blank=True, null=True, )
     can_submit = models.BooleanField(blank=False, null=False, default=True)
     def __str__(self):
