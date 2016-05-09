@@ -78,7 +78,8 @@ class MisoAPITestCase(TestCase):
         self.test_job_6 = Job(name="tjn_6", description="tjd_6", pipeline=self.test_pipeline_2, scheduler_state=decodestatus[drmaa.JobState.RUNNING])
         self.test_job_7 = Job(name="tjn_7", description="tjd_7", pipeline=self.test_pipeline_1, scheduler_state=decodestatus[drmaa.JobState.SYSTEM_SUSPENDED])
         self.test_job_8 = Job(name="tjn_8", description="tjd_8", pipeline=self.test_pipeline_2, scheduler_state=decodestatus[drmaa.JobState.USER_SUSPENDED])
-        self.test_job_9 = Job(name="tjn_9", description="tjd_9", pipeline=self.test_pipeline_2, scheduler_state=decodestatus[drmaa.JobState.DONE])
+        self.test_job_9 = Job(name="tjn_9", description="tjd_9", pipeline=self.test_pipeline_2, scheduler_state=decodestatus[drmaa.JobState.DONE], state=2)
+        self.test_job_10 = Job(name="tjn_10", description="tjd_10", pipeline=self.test_pipeline_2, scheduler_state=decodestatus[drmaa.JobState.RUNNING], state=3)
 
         self.test_job_0.save()
         self.test_job_1.save()
@@ -90,7 +91,7 @@ class MisoAPITestCase(TestCase):
         self.test_job_7.save()
         self.test_job_8.save()
         self.test_job_9.save()
-
+        self.test_job_10.save()
 # miso API specific tests
     def test_get_completed_jobs(self):
         query = "getCompletedTasks"
@@ -110,7 +111,7 @@ class MisoAPITestCase(TestCase):
             json.dumps({"query": query}),
             content_type="application/json").json()
 
-        self.assertEqual(1, len(response))
+        self.assertEqual(2, len(response))
 
     def test_get_pending_jobs(self):
         query = "getPendingTasks"
@@ -119,8 +120,7 @@ class MisoAPITestCase(TestCase):
             url, 
             json.dumps({"query": query}),
             content_type="application/json").json()
-
-        self.assertEqual(5, len(response))
+        self.assertEqual(9, len(response))
 
     def test_get_jobs(self):
         pass

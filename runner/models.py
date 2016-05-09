@@ -7,11 +7,12 @@ JOB_STATES = ((0, 'not started'), (1, 'running'), (2, 'finished'), (3, 'error'))
 
 class InputKey(models.Model):
     name = models.CharField(max_length=50, unique=True)
+    default = models.CharField(max_length=500, blank=True, null=True)
     def __str__(self):
         return self.name
 
 class Command(models.Model):
-    name = models.CharField(max_length=50)
+    name = models.CharField(max_length=50, unique=True)
     description = models.CharField(max_length=200)
     command_text = models.CharField(max_length=5000)
     monitor = models.PositiveSmallIntegerField(choices=MONITOR_TYPES, default=0)
@@ -20,7 +21,7 @@ class Command(models.Model):
         return self.name
     
 class Pipeline(models.Model):
-    name = models.CharField(max_length=50)
+    name = models.CharField(max_length=50, unique=True)
     description = models.CharField(max_length=200)
     commands = models.ManyToManyField(Command)
 
@@ -32,7 +33,7 @@ class Job(models.Model):
     A run of a pipeline
     """
     
-    name = models.CharField(max_length=50)
+    name = models.CharField(max_length=150, unique=True)
     description = models.CharField(max_length=200)
     pipeline = models.ForeignKey(Pipeline)
     input = models.CharField(max_length=10000, default='[]')
@@ -41,6 +42,7 @@ class Job(models.Model):
     scheduler_state = models.CharField(max_length=500, null=True, blank=True)
     last_run = models.DateTimeField(blank=True, null=True, )
     can_submit = models.BooleanField(blank=False, null=False, default=True)
+    
     def __str__(self):
         return self.name
     

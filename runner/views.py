@@ -18,20 +18,21 @@ import drmaa
 from django.http import JsonResponse
 # Non-restful API for integration
 
-def _get_data_for_state(clazz, drmaa_state, serialize=True):
-    jobs = clazz.objects.filter(scheduler_state=decodestatus[drmaa_state])
+
+def _get_data_for_state(jobs, serialize=True):
     rtn = []
     for job in jobs:
-        jobject = {"id": job.pk, 
-            "name": job.name,
-            "statusMessage": job.scheduler_state,
-            "startDate": job.last_run,
-            "pipeline": {"name": job.pipeline.name,
-                "processes": []
+        jobject = {'id': job.pk, 
+            'name': job.name,
+            'log': job.log,
+            'statusMessage': job.scheduler_state,
+            'startDate': job.last_run,
+            'pipeline': {'name': job.pipeline.name,
+                'processes': []
             }
         }
         for command in job.pipeline.commands.all():
-            jobject["pipeline"]["processes"].append(command.name)
+            jobject['pipeline']['processes'].append({'name': command.name})
         rtn.append(jobject)
     if serialize:
         return JsonResponse(rtn, safe=False)
@@ -43,35 +44,39 @@ def get_completed_jobs(request):
     Returns all jobs that have been marked by the scheduler as completed.
     """
 
-    return _get_data_for_state(Job, drmaa.JobState.DONE)
+    jobs = Job.objects.filter(scheduler_state=decodestatus[drmaa.JobState.DONE]).filter(state=2)
+    return _get_data_for_state(jobs)
 
 def get_failed_jobs(request):
     """
     Returns all jobs that have been marked by the scheduler as failed.
     """
-    
-    return _get_data_for_state(Job, drmaa.JobState.FAILED)
+    #TODO: add jobs failed for other reasons
+    jobs = Job.objects.filter(scheduler_state=decodestatus[drmaa.JobState.FAILED]) | Job.objects.filter(state=3)
+
+    return _get_data_for_state(jobs.distinct())
 
 def get_running_jobs(request):
     """
     Returns all jobs that have been marked by the scheduler as running.
     """
 
-    return _get_data_for_state(Job, drmaa.JobState.RUNNING)
+    running_jobs = Job.objects.filter(scheduler_state=decodestatus[drmaa.JobState.RUNNING]).filter(state__in=(1,2))
 
+    return _get_data_for_state(running_jobs)
 
 def get_pending_jobs(request):
     """
     Returns all jobs that have been marked by the scheduler as pending.
     """
     
-    rtn = []
-    rtn.extend(_get_data_for_state(Job, drmaa.JobState.QUEUED_ACTIVE, False))
-    rtn.extend(_get_data_for_state(Job, drmaa.JobState.SYSTEM_ON_HOLD, False))
-    rtn.extend(_get_data_for_state(Job, drmaa.JobState.USER_ON_HOLD, False))
-    rtn.extend(_get_data_for_state(Job, drmaa.JobState.USER_SYSTEM_ON_HOLD, False))
-    rtn.extend(_get_data_for_state(Job, drmaa.JobState.UNDETERMINED, False))
-    return JsonResponse(rtn, safe=False)
+    jobs = Job.objects.filter(scheduler_state__in=[decodestatus[drmaa.JobState.QUEUED_ACTIVE],
+        decodestatus[drmaa.JobState.SYSTEM_ON_HOLD],
+        decodestatus[drmaa.JobState.USER_ON_HOLD],
+        decodestatus[drmaa.JobState.USER_SYSTEM_ON_HOLD],
+        decodestatus[drmaa.JobState.UNDETERMINED]]) | Job.objects.filter(state=0)
+
+    return _get_data_for_state(jobs.distinct())
 
 def get_jobs(request):
     """
@@ -85,14 +90,14 @@ def get_job(request):
     Get a job by id.
     POST should look like:
     `{
-        "query": "getPipeline",
-        "params": {
-           "name": "taskid"
+        'query': 'getPipeline',
+        'params': {
+           'name': 'taskid'
        }
     }`
     """
     raise NotImplementedError()
-#     params = json.loads(request.POST.get("params"))
+#     params = json.loads(request.POST.get('params'))
 #     name = params.get("name")
 #     return _serialize_objs([Job.objects.get(pk=name)])
 
@@ -101,31 +106,31 @@ def get_pipeline(request):
     Get a pipeline by name.
     POST should look like:
     `{
-        "query": "getPipeline",
-        "params": {
-           "name": "pipeline name"
+        'query': 'getPipeline',
+        'params': {
+           'name': 'pipeline name'
        }
     }`
     """
     rtn = {}
-    params = request.POST.get("params")
+    params = request.POST.get('params')
     name = params.get("name")
 
     pipeline = Pipeline.objects.get(name=name)
-    rtn["name"] = pipeline.name
+    rtn['name'] = pipeline.name
     processes = []
     all_required_parameters = []
     for command in pipeline.commands.all():
         input_keys = []
         for input_key in command.input_keys.all():
-            if input_key.name not in input_keys:
-                input_keys.append(input_key.name)
-            if {"name": input_key.name} not in all_required_parameters:
-                all_required_parameters.append({"name": input_key.name})
-        
-        processes.append({"name": command.name, "parameters": input_keys})
-    rtn["processes"] = processes
-    rtn["allRequiredParameters"] = all_required_parameters
+            input_obj = { 'name': input_key.name, 'default_text': input_key.default }
+            if input_obj not in input_keys:
+                input_keys.append(input_obj)
+            if input_obj not in all_required_parameters:
+                all_required_parameters.append(input_obj)
+        processes.append({'name': command.name, 'parameters': input_keys})
+    rtn['processes'] = processes
+    rtn['allRequiredParameters'] = all_required_parameters
     return JsonResponse(rtn, safe=False) 
 
 def get_pipelines(request):
@@ -135,10 +140,10 @@ def get_pipelines(request):
     rtn = []
     for pipeline in Pipeline.objects.all():
         obj = {}
-        obj["name"] = pipeline.name
-        obj["processes"] = []
+        obj['name'] = pipeline.name
+        obj['processes'] = []
         for command in pipeline.commands.all():
-            obj["processes"].append(command.name)
+            obj['processes'].append(command.name)
         rtn.append(obj)
         
     return JsonResponse(rtn, safe=False) 
@@ -151,11 +156,11 @@ def submit_job(request):
     The request should contain everything needed to start a job:
     """
 
-    print "POST {}".format(request.POST)
-    print "params {}".format(request.POST.get("params"))
+    print 'POST {}'.format(request.POST)
+    print 'params {}'.format(request.POST.get('params'))
     description = "pipelion submitted job"
 
-    request.POST = request.POST.get("submitTask")
+    request.POST = request.POST.get('submitTask')
 
     pipeline_name = request.POST.get("pipeline")
     params = request.POST.get("params")
@@ -180,7 +185,7 @@ def submit_job(request):
     job.save()
     if run:
         run_job(None, job.pk)
-    rtn = {"success": True, "id": job.pk}
+    rtn = {'success': True, 'id': job.pk}
     return JsonResponse(rtn, safe=False) 
 
 
@@ -190,16 +195,16 @@ def miso(request):
     Marshalls between miso specific API methods based on query.
     """
 
-    query = ""
+    query = ''
 
-    if "submitTask" not in  request.POST and "query" not in  request.POST:
+    if 'submitTask' not in  request.POST and 'query' not in  request.POST:
         # it came from miso.  Fix post.
         request.POST = json.loads(request.body)
 
-    if request.POST.get("submitTask"):
-        query = "submitTask"
-    elif request.POST.get("query"):
-        query = request.POST.get("query")
+    if request.POST.get('submitTask'):
+        query = 'submitTask'
+    elif request.POST.get('query'):
+        query = request.POST.get('query')
     else:
         pass
 
@@ -216,12 +221,13 @@ def miso(request):
     }
 
     result = views[query](request)
-    print  "getting {} returning {}".format( query, result )
+    print  'GETTING {} '.format( query )
+    print 'Returning {} '.format( result ) 
     return result
 # end of miso specific code.
 
 def run_job(request, pk):
-    success_url = "/runner/list_job"
+    success_url = '/runner/list_job'
     def run_commands(job):
         # run each command in the pipeline
         job.last_run = datetime.now()
@@ -230,8 +236,8 @@ def run_job(request, pk):
         job.save()
         job_log = {}
         for command in job.pipeline.commands.all():
-            command_log = { "messages": [], "system_errors": []}
-            command_log.get("messages").append({"start_time": str(datetime.now())})
+            command_log = { 'messages': [], 'system_errors': []}
+            command_log.get('messages').append({'start_time': str(datetime.now())})
             std_out = ""
             std_err = ""
             exit_code = ""
@@ -242,7 +248,8 @@ def run_job(request, pk):
                 for placeholder, value in item.iteritems():
                     raw_command = raw_command.replace(placeholder, value)
 
-            command_log.get("messages").append( {"raw_command": raw_command} )
+            command_log.get('messages').append( {"raw_command": raw_command} )
+            polling = False
             try:
                 p = subprocess.Popen(raw_command, stdin=None, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
                 std_out, std_err = p.communicate()
@@ -250,31 +257,33 @@ def run_job(request, pk):
                 if command.monitor != 0:
                     monitor = monitors.get(command.monitor)()
                     ref = monitor.get_job_reference(std_out)
-                    command_log.get("messages").append({"scheduler_ref": ref})
-                    command_log.get("messages").append({"monitoring": command.monitor})
-                    job_log[command.name + str(command.pk)] = command_log
+                    command_log.get('messages').append({'scheduler_ref': ref})
+                    command_log.get('messages').append({'monitoring': command.monitor})
+                    job_log[command.name] = command_log
                     job.log = json.dumps(job_log)
                     job.save()
+                    polling = True
                     success = monitor.monitor(job, std_out)
                 else:
                     success = True
             except CalledProcessError as cpe:
                 exit_code = cpe.returncode
-                command_log["system_errors"].append(str(e))
+                command_log['system_errors'].append(str(e))
             except OSError as ose:
                 exit_code = ose.errno
-                command_log["system_errors"].append(str(ose))
+                command_log['system_errors'].append(str(ose))
             except Exception as ex:
                 exit_code = -1
-                command_log["system_errors"].append(str(ex))
+                command_log['system_errors'].append(str(ex))
             finally:
-                command_log.get("messages").append({"std_out": std_out})
-                command_log.get("messages").append({"std_err": std_err})
-                command_log.get("messages").append({"exit_code": exit_code})
-                command_log.get("messages").append({"end_time": str(datetime.now())})
+                polling = False
+                command_log.get('messages').append({'std_out': std_out})
+                command_log.get('messages').append({'std_err': std_err})
+                command_log.get('messages').append({'exit_code': exit_code})
+                command_log.get('messages').append({'end_time': str(datetime.now())})
 
-                command_log["success"] = success
-                job_log[command.name + str(command.pk)] = command_log
+                command_log['success'] = success
+                job_log[command.name] = command_log
                 job.log = json.dumps(job_log)
                 job.save()
                 if not success:
@@ -287,12 +296,12 @@ def run_job(request, pk):
     job = Job.objects.get(id=pk)
     thread.start_new_thread (run_commands, (job,))
 
-    return redirect("job_list")
+    return redirect('job_list')
 
 # Views for pipelion ui
 
 class CommandList(ListView):
-    queryset = Command.objects.order_by("-id")
+    queryset = Command.objects.order_by('-id')
     model = Command
     def get_context_data(self, **kwargs):
         context = super(CommandList, self).get_context_data(**kwargs)
@@ -300,28 +309,28 @@ class CommandList(ListView):
 
 class CommandCreate(CreateView):
     model = Command
-    success_url = "/"
-    fields = ["name", "description", "command_text"]
+    success_url = '/'
+    fields = ['name', "description", "command_text"]
 
 class CommandDelete(DeleteView):
     model = Command
-    success_url = "/list/command"
+    success_url = '/list/command'
 
 class JobCreate(CreateView):
-    success_url = "/list/job"
+    success_url = '/list/job'
     model = Job
-    fields = ["name", "description", "pipeline"]
+    fields = ['name', "description", "pipeline"]
     def post(self, request):
         new_model = Job()
-        new_model.name = request.POST.get("name")
-        new_model.description = request.POST.get("description")
-        new_model.input = request.POST.get("input_json")
-        new_model.pipeline = Pipeline.objects.get(pk=request.POST.get("pipeline"))
+        new_model.name = request.POST.get('name')
+        new_model.description = request.POST.get('description')
+        new_model.input = request.POST.get('input_json')
+        new_model.pipeline = Pipeline.objects.get(pk=request.POST.get('pipeline'))
         new_model.save()
         return HttpResponseRedirect(self.success_url)
 
 class JobList(ListView):
-    queryset = Job.objects.order_by("-id")
+    queryset = Job.objects.order_by('-id')
     model = Job
     def get_context_data(self, **kwargs):
         context = super(JobList, self).get_context_data(**kwargs)
@@ -329,43 +338,43 @@ class JobList(ListView):
 
 class JobDelete(DeleteView):
     model = Job
-    success_url = "/list/job"
+    success_url = '/list/job'
 
 class PipelineList(ListView):
     model = Pipeline
     def get_context_data(self, **kwargs):
         context = super(PipelineList, self).get_context_data(**kwargs)
-#         context["now"] = timezone.now()
+#         context['now'] = timezone.now()
         return context
 
 class PipelineCreate(CreateView):
-    success_url = "/list/pipeline"
+    success_url = '/list/pipeline'
     model = Pipeline
-    fields = ["name", "description"]
+    fields = ['name', "description"]
     def post(self, request):
         new_model = Pipeline()
-        new_model.name = request.POST.get("name")
-        new_model.description = request.POST.get("description")
+        new_model.name = request.POST.get('name')
+        new_model.description = request.POST.get('description')
         new_model.save()
-        commands = request.POST.getlist("commands[]")
+        commands = request.POST.getlist('commands[]')
         for command in commands:
             new_model.commands.add(command)
         new_model.save()
         return HttpResponseRedirect(self.success_url)
     def get_context_data(self, **kwargs):
         context = super(PipelineCreate, self).get_context_data(**kwargs)
-        context["commands"]= Command.objects.all()
+        context['commands']= Command.objects.all()
         return context
 
 class PipelineDelete(DeleteView):
     model = Pipeline
-    success_url = "/list/pipeline"
+    success_url = '/list/pipeline'
 
 def Login(request):
-    success_url = "/runner/list_job"
+    success_url = '/runner/list_job'
 
 def LoginOrHome(request):
     if request.user.is_authenticated():
-        return redirect("job_list")
+        return redirect('job_list')
     else:
-        return redirect("/login")
+        return redirect('/login')
