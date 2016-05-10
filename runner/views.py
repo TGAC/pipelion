@@ -235,9 +235,10 @@ def run_job(request, pk):
         job.log = ""
         job.save()
         job_log = {}
+        commands_executed = []
         for command in job.pipeline.commands.all():
-            command_log = { 'messages': [], 'system_errors': []}
-            command_log.get('messages').append({'start_time': str(datetime.now())})
+            command_log = { 'messages': {}, 'system_errors': []}
+            command_log.get('messages')['start_time'] = str(datetime.now())
             std_out = ""
             std_err = ""
             exit_code = ""
@@ -248,7 +249,7 @@ def run_job(request, pk):
                 for placeholder, value in item.iteritems():
                     raw_command = raw_command.replace(placeholder, value)
 
-            command_log.get('messages').append( {"raw_command": raw_command} )
+            command_log.get('messages')['raw_command'] = raw_command
             polling = False
             try:
                 p = subprocess.Popen(raw_command, stdin=None, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
@@ -257,13 +258,13 @@ def run_job(request, pk):
                 if command.monitor != 0:
                     monitor = monitors.get(command.monitor)()
                     ref = monitor.get_job_reference(std_out)
-                    command_log.get('messages').append({'scheduler_ref': ref})
-                    command_log.get('messages').append({'monitoring': command.monitor})
+                    command_log.get('messages')['scheduler_ref'] = ref
+                    command_log.get('messages')['monitoring'] = command.monitor
                     job_log[command.name] = command_log
                     job.log = json.dumps(job_log)
                     job.save()
                     polling = True
-                    success = monitor.monitor(job, std_out)
+                    success = _retry_command(3,job, std_out, monitor)
                 else:
                     success = True
             except CalledProcessError as cpe:
@@ -277,10 +278,10 @@ def run_job(request, pk):
                 command_log['system_errors'].append(str(ex))
             finally:
                 polling = False
-                command_log.get('messages').append({'std_out': std_out})
-                command_log.get('messages').append({'std_err': std_err})
-                command_log.get('messages').append({'exit_code': exit_code})
-                command_log.get('messages').append({'end_time': str(datetime.now())})
+                command_log.get('messages')['std_out'] = std_out
+                command_log.get('messages')['std_err'] = std_err
+                command_log.get('messages')['exit_code'] = exit_code
+                command_log.get('messages')['end_time'] = str(datetime.now())
 
                 command_log['success'] = success
                 job_log[command.name] = command_log
@@ -298,6 +299,21 @@ def run_job(request, pk):
 
     return redirect('job_list')
 
+def _retry_command(retries, job, std_out, monitor):
+    success = False
+    for i in range(0, retries):
+        while True: 
+            try:
+                success = monitor.monitor(job, std_out)
+            except Exception as try_ex:
+                if i == retries:
+                    print 'Giving up {}, tried {} times.'.format(job.name, retries)
+                    raise try_ex
+                else:
+                    print 'Retrying, caught a {}'.format(try_ex)
+                    continue
+            break
+    return success
 # Views for pipelion ui
 
 class CommandList(ListView):
