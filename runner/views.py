@@ -1,32 +1,31 @@
 import StringIO
 from datetime import datetime
-from django.http import HttpResponse, HttpResponseRedirect
+from django.core import exceptions, serializers
+from django.http import HttpResponse, HttpResponseRedirect, JsonResponse, \
+    JsonResponse
 from django.shortcuts import redirect, render
+from django.views.decorators.csrf import csrf_exempt
 from django.views.generic.edit import CreateView, UpdateView, DeleteView
 from django.views.generic.list import ListView
-from django.core import exceptions
+import drmaa
 import json
 from runner.models import Command, Pipeline, Job, JOB_STATES
+from runner.monitors import monitors, decodestatus
 from subprocess import CalledProcessError
 import subprocess
 import thread
-from django.core import serializers
-from django.views.decorators.csrf import csrf_exempt
-from django.http import JsonResponse
-from runner.monitors import monitors, decodestatus
-import drmaa
-from django.http import JsonResponse
+
+
 # Non-restful API for integration
-
-
 def _get_data_for_state(jobs, serialize=True):
     rtn = []
     for job in jobs:
-        jobject = {'id': job.pk, 
+        jobject = {'id': job.pk,
+            'startDate': job.started,
+            'completionDate': job.finished,
             'name': job.name,
             'log': job.log,
             'statusMessage': job.scheduler_state,
-            'startDate': job.last_run,
             'pipeline': {'name': job.pipeline.name,
                 'processes': []
             }
@@ -147,8 +146,17 @@ def get_pipelines(request):
         rtn.append(obj)
         
     return JsonResponse(rtn, safe=False) 
-        
-    #return _serialize_objs(Pipeline.objects.all())
+
+def _miso_job_namer(pipeline, vals_for_title):
+    name = "miso {} - {}".format(pipeline.name, datetime.now())
+    new_name = ""
+    for command in pipeline.commands.all():
+        for val in vals_for_title:
+            if val not in new_name:
+                new_name += val + " "
+    if new_name:
+        name = "miso {} {} {}".format(new_name, pipeline.name, datetime.now())
+    return name
 
 def submit_job(request):
     """
@@ -165,22 +173,29 @@ def submit_job(request):
     pipeline_name = request.POST.get("pipeline")
     params = request.POST.get("params")
     run = True
-    name = "miso {} - {}".format(pipeline_name, datetime.now())
-    if "name" in params:
-        name = params.get("name")
+
+    pipeline = Pipeline.objects.get(name=pipeline_name)
+    
+    # be clever and only store params that are associated input keys.
+    input_arr = []
+    vals_for_title = []
+    for command in pipeline.commands.all():
+        for input_key in command.input_keys.all():
+            obj = { input_key.name: params.get(input_key.name) }
+            if input_key.include_val_in_job_title:
+                vals_for_title.append(params.get(input_key.name))
+            if obj not in input_arr:
+                input_arr.append(obj)
+    name = _miso_job_namer(pipeline, vals_for_title)
     if "description" in params:
         description = params.get("description")
     if "run" in params:
         run = params.get("run")
+        
     job = Job(name=name, description=description, pipeline=Pipeline.objects.get(name=pipeline_name))
-    # be clever and only store params that are associated input keys.
-    input_arr = []
 
-    for command in job.pipeline.commands.all():
-        for input_key in command.input_keys.all():
-            obj = { input_key.name: params.get(input_key.name) }
-            if obj not in input_arr:
-                input_arr.append(obj)
+
+
     job.input = json.dumps(input_arr)
     job.save()
     if run:
@@ -188,12 +203,42 @@ def submit_job(request):
     rtn = {'success': True, 'id': job.pk}
     return JsonResponse(rtn, safe=False) 
 
+checked_for_fails = False
+
+def _check_for_fails():
+    print 'Checking for ungraceful shutdown...'
+    fails = {}
+    for job in Job.objects.all():
+        if job.log:
+            log = json.loads(job.log)
+            for command_name, command_log in log.iteritems():
+                if 'success' not in command_log:
+                    fails[job] = command_name
+                    break
+    
+    print 'Failure check complete.'
+    if fails:
+        print 'The following jobs have been put into an error state and will be re-run:'
+        for job, command in fails.iteritems():
+            print job.name
+            run_job(None, job.pk, command)
+    return len(fails)
+
+class State():
+    """
+    Static property/s to check on start up.
+    """
+    checked = False
 
 @csrf_exempt
 def miso(request):
     """
     Marshalls between miso specific API methods based on query.
     """
+
+    if not State.checked:
+        _check_for_fails()
+        State.checked = True
 
     query = ''
 
@@ -226,17 +271,29 @@ def miso(request):
     return result
 # end of miso specific code.
 
-def run_job(request, pk):
+def run_job(request, pk, run_from_command=None):
     success_url = '/runner/list_job'
-    def run_commands(job):
+    def run_commands(job, run_from_command):
         # run each command in the pipeline
-        job.last_run = datetime.now()
         job.state = 1
         job.log = ""
+        job.started = datetime.now()
+
         job.save()
         job_log = {}
-        commands_executed = []
-        for command in job.pipeline.commands.all():
+        commands_to_run = []
+
+        if run_from_command:
+            start_adding = False
+            for command in job.pipeline.commands.all():
+                if command.name == run_from_command:
+                    start_adding = True
+                if start_adding:
+                    commands_to_run.append(command)
+        else:
+            commands_to_run = job.pipeline.commands.all()
+
+        for command in commands_to_run:
             command_log = { 'messages': {}, 'system_errors': []}
             command_log.get('messages')['start_time'] = str(datetime.now())
             std_out = ""
@@ -282,7 +339,6 @@ def run_job(request, pk):
                 command_log.get('messages')['std_err'] = std_err
                 command_log.get('messages')['exit_code'] = exit_code
                 command_log.get('messages')['end_time'] = str(datetime.now())
-
                 command_log['success'] = success
                 job_log[command.name] = command_log
                 job.log = json.dumps(job_log)
@@ -293,9 +349,10 @@ def run_job(request, pk):
         if job.state != 3:
             job.state = 2
         job.log = json.dumps(job_log)
+        job.finished = datetime.now()
         job.save()
     job = Job.objects.get(id=pk)
-    thread.start_new_thread (run_commands, (job,))
+    thread.start_new_thread (run_commands, (job, run_from_command))
 
     return redirect('job_list')
 

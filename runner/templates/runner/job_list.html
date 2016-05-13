@@ -48,10 +48,10 @@
                                 <h3 class = "panel-title">Output</h3>
                             </div>
                             <div id="output_panel{{ job.id }}" class = "panel-body" style="overflow-y: scroll;">
-                                
+
                                 <script>
-                                    var safeHTML = {{job.log|safe}} 
-                                    document.write('<pre>'+JSON.stringify(safeHTML, null, 2)+'</pre>');
+                                    var safeHTML = {{job.log|safe}}
+                                    document.write('<pre>' + JSON.stringify(safeHTML, null, 2) + '</pre>');
                                 </script>
                             </div>
                         </div>
